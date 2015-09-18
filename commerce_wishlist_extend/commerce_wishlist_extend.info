@@ -1,0 +1,20 @@
+name = Commerce Wishlist Extend
+description = Extend functions for the wishlist within Drupal Commerce
+package = Commerce
+dependencies[] = commerce
+dependencies[] = commerce_product
+dependencies[] = commerce_wishlist
+core = 7.x
+
+; Base module files
+files[] = commerce_wishlist_extend.module
+
+; Views handlers files
+project = "commerce_wishlist_extend"
+
+; Information added by drupal.org packaging script on 2013-10-25
+version = "7.x-1.0"
+core = "7.x"
+project = "commerce_wishlist_extend"
+datestamp = "1382685926"
+

@@ -1,0 +1,204 @@
+<?php
+
+/**
+ * @file
+ * Provides the extended functions to the wishlist module for use in Drupal Commerce.
+ */
+
+/**
+ * Implements hook_menu().
+ * Adds items to wishlist menu
+ */
+function commerce_wishlist_extend_form_commerce_wishlist_admin_form_alter(&$form, &$form_state, $form_id) {
+    $items = array();
+  
+    $form['wishlist_extend'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Wishlist Extend Options'),
+        '#collapsible' => FALSE,
+        '#collapsed' => FALSE,  
+    );
+
+    $form['wishlist_extend']['commerce_wishlist_extend_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Custom name'),
+        '#description' => t('Use a custom name instead of the default "wishlist" for various wishlist front end references.'),
+        '#default_value' => variable_get('commerce_wishlist_extend_name', NULL),
+        '#attributes' => array('placeholder' => t('Wishlist')),
+        '#required' => FALSE,
+    );
+
+    $form['wishlist_extend']['commerce_wishlist_extend_custom_url'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Custom url'),
+        '#description' => t('Use a custom name instead of the default "wishlist" for the url reference.'),
+        '#default_value' => variable_get('commerce_wishlist_extend_custom_url', NULL),
+        '#attributes' => array('placeholder' => t('wishlist')),
+        '#required' => FALSE,
+    );
+
+    $form['wishlist_extend']['commerce_wishlist_extend_url_tags'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Get custom url option for product attribute reference'),
+        '#description' => t('Some pages or nodes need a reference to pre-select fields for custom product attributes. This allows you to set "sku" or "pid" through your url. ex. products/item?pid=3827'),
+        '#default_value' => variable_get('commerce_wishlist_extend_url_tags', 0),
+        '#required' => FALSE,
+    );
+
+    $form['wishlist_extend']['commerce_wishlist_extend_target'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Remove wishlist links target'),
+        '#description' => t('Allows you to remove the target="_blank" from the wishlist link in product pages so that the link goes to the current window and not a new one.'),
+        '#default_value' => variable_get('commerce_wishlist_extend_target', 0),
+        '#required' => FALSE,
+    );
+    
+    $form['#validate'][] = 'commerce_wishlist_extend_validation';
+    
+    return $form;
+}
+
+// validate the url
+function commerce_wishlist_extend_validation(&$form, &$form_state) {
+    if (!preg_match('/^[A-Za-z0-9-_]+$/i', $form_state['values']['commerce_wishlist_extend_custom_url'])) {
+        form_set_error('', t('You must enter a valid url.'));
+    }
+}
+
+/**
+ * Implements hook_url_inbound_alter().
+ * 
+ */
+function commerce_wishlist_extend_url_inbound_alter(&$path, $options, $original_path) {
+    global $user;
+
+    // Alter the custom used URL to direct back to the wishlist
+    if (variable_get('commerce_wishlist_extend_custom_url') && strstr($path, variable_get('commerce_wishlist_extend_custom_url'))) {
+        $path = str_replace(variable_get('commerce_wishlist_extend_custom_url'), "wishlist", $path);
+    }
+}
+
+/**
+ * Implements hook_url_outbound_alter().
+ * 
+ */
+function commerce_wishlist_extend_url_outbound_alter(&$path, $options, $original_path) {
+    global $user;
+
+    // Alter the displayed URL but not if it's an admin page
+    if (!strstr($path, "config") && variable_get('commerce_wishlist_extend_custom_url') && strstr($path, "wishlist")) {
+        $path = str_replace("wishlist", variable_get('commerce_wishlist_extend_custom_url', 'wishlist'), $path);
+    }
+
+    // Fixes the wishlist link in case it doesn't populate the user id properly
+    if (!strstr($path, "config") && variable_get('commerce_wishlist_extend_custom_url') && $path == "user/*/" . variable_get('commerce_wishlist_extend_custom_url')) {
+        $path = "user/" . $user->uid . "/" . variable_get('commerce_wishlist_extend_custom_url', 'wishlist');
+    }
+}
+
+/**
+ * Implements hook_get_referencing_node_id().
+ */
+function commerce_wishlist_extend_get_referencing_node_id($product) {
+    // Iterate thhrough fields which refer to products.
+    foreach (commerce_info_fields('commerce_product_reference') as $field['field_name']) {
+        // Build query.
+        $query = new EntityFieldQuery;
+        $query->entityCondition('entity_type', 'node', '=')
+            ->fieldCondition($field['field_name'], 'product_id', $product->product_id, '=')
+            ->range(0, 1);
+
+        if ($result = $query->execute()) {
+            // Return node id.
+            return array_shift(array_keys($result['node']));
+        }
+    }
+
+    return FALSE;
+}
+
+/**
+ * Implements hook_commerce_product_reference_default_delta_alter().
+ */
+function commerce_wishlist_extend_commerce_product_reference_default_delta_alter(&$delta, $products) {
+
+    if (variable_get('commerce_wishlist_extend_url_tags', 0) && (isset($_GET['pid']) || isset($_GET['sku']))) {
+
+        //if a "pid" or "sku" parameter exists loop through the products that are attached to the node
+        foreach ($products as $key => $product) {
+
+            //if the product id or sku matches the current product set the delta to the key
+            if ($product->product_id==$_GET['pid'] || $product->sku==$_GET['sku']) {
+                $delta=$key;
+            }
+        }
+    }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function commerce_wishlist_extend_form_alter(&$form, &$form_state, $form_id) {
+    $commerce_name = variable_get('commerce_wishlist_extend_name', 'Wishlist');
+
+    // If user doesn't have wishlist permissions don't use these
+    if (user_access('view own wishlist')) {
+        if ($commerce_name) {
+            // replace wishlist with custom term
+            $form['add_to_wishlist']["#markup"] = str_replace("Add to Wishlist", "Add to " . $commerce_name, $form['add_to_wishlist']["#markup"]);
+            $form['add_to_wishlist']["#markup"] = str_replace(">wishlist<", ">" . strtolower($commerce_name) . "<", $form['add_to_wishlist']["#markup"]);
+        }
+
+        if (variable_get('commerce_wishlist_extend_target')) {
+            // remove the target from the link
+            $form['add_to_wishlist']["#markup"] = str_replace('target="_blank"', "", $form['add_to_wishlist']["#markup"]); 
+        }
+    }
+    else {
+
+        // Remove if user does not have permissions
+        unset($form['add_to_wishlist']);
+    }
+
+    if (strstr($form_id, 'commerce_cart_add_to_cart_form')) {
+      $nid = commerce_wishlist_extend_get_referencing_node_id($form_state['default_product']);
+      $form['line_item_fields']['field_node_reference']['und']['#default_value'][0] = $nid;
+      $form['line_item_fields']['field_node']['und']['#default_value'][0] = $nid;
+    }
+
+    // Change wording in messages to custom term
+    
+    // $messages = drupal_get_messages("status", TRUE);
+    // foreach ($messages['status'] as $key=>$msg){
+    //     if (strstr($msg, "The product has been deleted from your wishlist")){
+    //         $messages['status'][$key] = "The product has been removed from your ".strtolower($commerce_name)." list.";
+    //     }
+    //     drupal_set_message(t($messages['status'][$key]), 'status', FALSE);
+    // }
+
+    if ($commerce_name) {
+        $messages = drupal_get_messages("status", TRUE);
+
+        foreach ($messages['status'] as $key => $msg) {
+            
+            if (strstr($msg, "The product has been deleted from your wishlist")) {
+                $messages['status'][$key] = "The product has been removed from your " . strtolower($commerce_name) . " list.";
+            }
+            
+            if (strstr($msg, "your wishlist")) {
+                $messages['status'][$key] = str_replace("wishlist", strtolower($commerce_name), $msg);
+            }
+
+            drupal_set_message(filter_xss(t($messages['status'][$key]), array('a', 'em', 'strong', 'cite', 'blockquote', 'code', 'ul', 'ol', 'li', 'dl', 'dt', 'dd')), 'status', FALSE);
+        }
+    }
+}
+
+function commerce_wishlist_extend_ajax_render_alter(&$commands) {
+    if (variable_get('commerce_wishlist_extend_target')) {
+        $commands[1]['data'] = str_replace('target="_blank"', "", $commands[1]['data']);
+    }
+    if (variable_get('commerce_wishlist_extend_name')) {
+        $commands[1]['data'] = str_replace(">wishlist<", ">" . strtolower(variable_get('commerce_wishlist_extend_name', 'Wishlist')) . "<", $commands[1]['data']);
+    }
+}
