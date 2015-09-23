@@ -60,8 +60,10 @@ function commerce_wishlist_extend_form_commerce_wishlist_admin_form_alter(&$form
 
 // validate the url
 function commerce_wishlist_extend_validation(&$form, &$form_state) {
-    if (!preg_match('/^[A-Za-z0-9-_]+$/i', $form_state['values']['commerce_wishlist_extend_custom_url'])) {
-        form_set_error('', t('You must enter a valid url.'));
+    if(isset($form_state['values']['commerce_wishlist_extend_custom_url'])) {
+        if (!preg_match('/^[A-Za-z0-9-_]+$/i', $form_state['values']['commerce_wishlist_extend_custom_url'])) {
+            form_set_error('', t('You must enter a valid url.'));
+        }
     }
 }
 
@@ -142,17 +144,17 @@ function commerce_wishlist_extend_form_alter(&$form, &$form_state, $form_id) {
     $commerce_name = variable_get('commerce_wishlist_extend_name', 'Wishlist');
 
     // If user doesn't have wishlist permissions don't use these
-    if (user_access('view own wishlist')) {
-        if ($commerce_name) {
-            // replace wishlist with custom term
-            $form['add_to_wishlist']["#markup"] = str_replace("Add to Wishlist", "Add to " . $commerce_name, $form['add_to_wishlist']["#markup"]);
-            $form['add_to_wishlist']["#markup"] = str_replace(">wishlist<", ">" . strtolower($commerce_name) . "<", $form['add_to_wishlist']["#markup"]);
-        }
+    if (user_access('view own wishlist') && isset($form['add_to_wishlist'])) {
+            if ($commerce_name) {
+                // replace wishlist with custom term
+                $form['add_to_wishlist']["#markup"] = str_replace("Add to Wishlist", "Add to " . $commerce_name, $form['add_to_wishlist']["#markup"]);
+                $form['add_to_wishlist']["#markup"] = str_replace(">wishlist<", ">" . strtolower($commerce_name) . "<", $form['add_to_wishlist']["#markup"]);
+            }
 
-        if (variable_get('commerce_wishlist_extend_target')) {
-            // remove the target from the link
-            $form['add_to_wishlist']["#markup"] = str_replace('target="_blank"', "", $form['add_to_wishlist']["#markup"]); 
-        }
+            if (variable_get('commerce_wishlist_extend_target')) {
+                // remove the target from the link
+                $form['add_to_wishlist']["#markup"] = str_replace('target="_blank"', "", $form['add_to_wishlist']["#markup"]); 
+            }
     }
     else {
 
@@ -176,7 +178,7 @@ function commerce_wishlist_extend_form_alter(&$form, &$form_state, $form_id) {
     //     drupal_set_message(t($messages['status'][$key]), 'status', FALSE);
     // }
 
-    if ($commerce_name) {
+    if ($commerce_name && isset($messages['status'])) {
         $messages = drupal_get_messages("status", TRUE);
 
         foreach ($messages['status'] as $key => $msg) {
